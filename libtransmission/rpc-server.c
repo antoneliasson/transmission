@@ -56,7 +56,7 @@ struct tr_rpc_server
     bool               isWhitelistEnabled;
     tr_port            port;
     char             * url;
-    struct in_addr     bindAddress;
+    struct tr_address  bindAddress;
     struct evhttp    * httpd;
     tr_session       * session;
     char             * username;
@@ -700,14 +700,11 @@ static void
 startServer (void * vserver)
 {
   tr_rpc_server * server  = vserver;
-  tr_address addr;
 
   if (!server->httpd)
     {
-      addr.type = TR_AF_INET;
-      addr.addr.addr4 = server->bindAddress;
       server->httpd = evhttp_new (server->session->event_base);
-      evhttp_bind_socket (server->httpd, tr_address_to_string (&addr), server->port);
+      evhttp_bind_socket (server->httpd, tr_address_to_string (&server->bindAddress), server->port);
       evhttp_set_gencb (server->httpd, handle_request, server);
     }
 }
@@ -904,10 +901,7 @@ tr_rpcIsPasswordEnabled (const tr_rpc_server * server)
 const char *
 tr_rpcGetBindAddress (const tr_rpc_server * server)
 {
-  tr_address addr;
-  addr.type = TR_AF_INET;
-  addr.addr.addr4 = server->bindAddress;
-  return tr_address_to_string (&addr);
+  return tr_address_to_string(&server->bindAddress);
 }
 
 /****
@@ -1021,16 +1015,16 @@ tr_rpcInit (tr_session  * session, tr_variant * settings)
       tr_logAddNamedError (MY_NAME, _("%s is not a valid address"), str);
       address = tr_inaddr_any;
     }
-  else if (address.type != TR_AF_INET)
+  else if (address.type != TR_AF_INET && address.type != TR_AF_INET6)
     {
-      tr_logAddNamedError (MY_NAME, _("%s is not an IPv4 address. RPC listeners must be IPv4"), str);
+      tr_logAddNamedError (MY_NAME, _("%s is not an IPv4 or IPv6 address. RPC listeners must be IPv4 or IPv6"), str);
       address = tr_inaddr_any;
     }
-  s->bindAddress = address.addr.addr4;
+  s->bindAddress = address;
 
   if (s->isEnabled)
     {
-      tr_logAddNamedInfo (MY_NAME, _("Serving RPC and Web requests on port 127.0.0.1:%d%s"), (int) s->port, s->url);
+      tr_logAddNamedInfo (MY_NAME, _("Serving RPC and Web requests on %s:%d%s"), tr_rpcGetBindAddress(s), (int) s->port, s->url);
       tr_runInEventThread (session, startServer, s);
 
       if (s->isWhitelistEnabled)
